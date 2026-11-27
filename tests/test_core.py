@@ -42,3 +42,20 @@ def test_prefix_with_trailing_separator(monkeypatch):
     monkeypatch.setenv("TOPIC_PREFIX", "quantara_")
     assert config.topic("raw.telemetry") == "quantara_raw.telemetry"
     assert config.group("ingest") == "quantara_cg-ingest"
+
+
+def test_topics_registry_and_ensure(monkeypatch):
+    from quantara_core import topics
+    monkeypatch.setenv("TOPIC_PREFIX", "quantara_")
+    assert all("/" not in n for n in topics.TOPICS)
+
+    class F:
+        def __init__(self, err=None): self.err = err
+        def result(self, timeout=None):
+            if self.err: raise Exception(self.err)
+
+    class Admin:
+        def create_topics(self, nts):
+            return {nt.topic: F("TOPIC_ALREADY_EXISTS" if i == 0 else None) for i, nt in enumerate(nts)}
+    out = topics.ensure_topics(Admin(), ["raw.telemetry", "raw.edge"])
+    assert out == {"quantara_raw.telemetry": "exists", "quantara_raw.edge": "created"}
