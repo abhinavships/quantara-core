@@ -56,6 +56,41 @@ def test_topics_registry_and_ensure(monkeypatch):
 
     class Admin:
         def create_topics(self, nts):
-            return {nt.topic: F("TOPIC_ALREADY_EXISTS" if i == 0 else None) for i, nt in enumerate(nts)}
+            return {nt.topic: F("TOPIC_ALREADY_EXISTS" if nt.topic.endswith("telemetry") else None) for nt in nts}
     out = topics.ensure_topics(Admin(), ["raw.telemetry", "raw.edge"])
     assert out == {"quantara_raw.telemetry": "exists", "quantara_raw.edge": "created"}
+
+
+def test_topic_budget_and_mapping():
+    from quantara_core import topics as T
+    assert len(T.PHYSICAL) <= 10 and len(T.PHYSICAL) == 7
+    assert set(T.LOGICAL) == set(T.TOPICS)                       # every logical topic is routed
+    assert all(T.physical(n) in T.PHYSICAL for n in T.TOPICS)
+
+
+def test_route_out_in_roundtrip_filters_by_logical_topic(monkeypatch):
+    from quantara_core import config
+    from quantara_core.bus import route_in, route_out
+    monkeypatch.setenv("TOPIC_PREFIX", "quantara_")
+    ptopic, wire = route_out("quantara_cloud.rca", {"a": 1})
+    assert ptopic == "quantara_cloud.events" and wire == {"a": 1, "_lt": "cloud.rca"}
+    want = {"quantara_cloud.rca", "quantara_cloud.twin"}
+    assert route_in(ptopic, wire, want) == ("quantara_cloud.rca", {"a": 1})        # tag removed, logical name restored
+    assert route_in(ptopic, {"a": 1, "_lt": "audit"}, want) is None                 # same physical topic, not wanted
+    assert route_in(ptopic, {"x": 1}, want)[0] in want                              # untagged -> first wanted sharing the topic
+    assert route_in("quantara_raw.edge", {"x": 1}, want) is None
+    assert route_in(ptopic, "junk", want) is None
+
+
+def test_ensure_topics_creates_only_physical():
+    from quantara_core import topics as T
+    made = []
+
+    class F:
+        def result(self, timeout=0): return None
+
+    class A:
+        def create_topics(self, nts):
+            made.extend(n.topic for n in nts); return {n.topic: F() for n in nts}
+    out = T.ensure_topics(A())
+    assert sorted(made) == sorted("quantara_" + p for p in T.PHYSICAL) and len(out) == 7

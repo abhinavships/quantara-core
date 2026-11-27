@@ -18,6 +18,28 @@ TOPICS = {
 }
 
 
+# Cluster limit: at most 10 topics in total. Apps keep using the logical names above; the bus maps them onto this
+# small set of physical topics, tags each message with its logical name and filters on read (see bus.py).
+PHYSICAL = {
+    "raw.telemetry": (6, 6 * H), "raw.edge": (3, D), "valid.telemetry": (6, 6 * H), "valid.edge": (3, D),
+    "vss.enriched": (6, 6 * H), "cloud.events": (3, D), "edge.in": (3, D),
+}
+LOGICAL = {
+    "raw.telemetry": "raw.telemetry", "raw.edge": "raw.edge", "raw.feeds": "raw.edge",
+    "valid.telemetry": "valid.telemetry", "valid.edge": "valid.edge", "valid.feeds": "valid.edge",
+    "vss.enriched": "vss.enriched",
+    "dlq": "cloud.events", "quarantine": "cloud.events", "cloud.escalations": "cloud.events", "cloud.security": "cloud.events",
+    "cloud.fleet": "cloud.events", "cloud.rca": "cloud.events", "cloud.twin": "cloud.events", "cloud.route": "cloud.events",
+    "cloud.ota": "cloud.events", "notify.out": "cloud.events", "audit": "cloud.events",
+    "commands.out": "edge.in", "control.inject": "edge.in",
+}
+assert set(LOGICAL) == set(TOPICS) and set(LOGICAL.values()) == set(PHYSICAL) and len(PHYSICAL) <= 10
+
+
+def physical(short):
+    return LOGICAL.get(short, short)
+
+
 def ensure_topics(admin=None, names=None):
     """Idempotently create topics (prefix-checked). Returns {name: 'created'|'exists'|error}.
     `admin` is injectable for tests; default is a Kafka AdminClient from env."""
@@ -25,7 +47,7 @@ def ensure_topics(admin=None, names=None):
         from confluent_kafka.admin import AdminClient
         admin = AdminClient(config.kafka_conf())
     from confluent_kafka.admin import NewTopic
-    want = {config.topic(n): TOPICS[n] for n in (names or TOPICS)}
+    want = {config.topic(p): PHYSICAL[p] for p in sorted({physical(n) for n in (names or TOPICS)})}
     futs = admin.create_topics([NewTopic(t, num_partitions=p, replication_factor=2,
                                          config={"retention.ms": str(r)}) for t, (p, r) in want.items()])
     out = {}

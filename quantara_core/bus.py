@@ -6,7 +6,25 @@ import threading
 import time
 from collections import defaultdict
 
-from . import config
+from . import config, topics as _topics
+
+
+def route_out(topic, msg):
+    """logical full topic name + message -> (physical full topic, message tagged with its logical name)."""
+    short = topic[len(config.topic("")):]
+    return config.topic(_topics.physical(short)), ({**msg, "_lt": short} if isinstance(msg, dict) else msg)
+
+
+def route_in(physical_topic, msg, wanted):
+    """Returns (logical full topic, message) if the consumer asked for this logical topic, else None. `wanted` = logical full names."""
+    if not isinstance(msg, dict): return None
+    lt = msg.get("_lt")
+    if lt is None:                                   # untagged: legacy or undecodable; deliver to the first wanted logical sharing the topic
+        for w in sorted(wanted):
+            if config.topic(_topics.physical(w[len(config.topic("")):])) == physical_topic: return w, msg
+        return None
+    name = config.topic(lt)
+    return (name, {k: v for k, v in msg.items() if k != "_lt"}) if name in wanted else None
 
 
 class MemBus:
@@ -50,6 +68,7 @@ class KafkaBus:
             self.ok += 1
 
     def publish(self, topic, msg, key=None):
+        topic, msg = route_out(topic, msg)
         data = json.dumps(msg, separators=(",", ":")).encode()
         for i in range(self._retries):
             try:
@@ -63,20 +82,24 @@ class KafkaBus:
         raise RuntimeError(f"publish to {topic} failed")
 
     def poll(self, group, topics, max_n=100, timeout=0.5):
-        key = (group, tuple(sorted(topics)))
+        wanted = set(topics)
+        phys = sorted({config.topic(_topics.physical(t[len(config.topic("")):])) for t in topics})
+        key = (group, tuple(phys))
         if key not in self.consumers:
             c = self._Consumer({**config.kafka_conf(), "group.id": group,
                                 "auto.offset.reset": "latest", "enable.auto.commit": True})
-            c.subscribe(list(topics))
+            c.subscribe(phys)
             self.consumers[key] = c
         out = []
         for m in self.consumers[key].consume(max_n, timeout):
             if m.error():
                 continue                     # transient errors are retried by librdkafka
             try:
-                out.append((m.topic(), m.key() and m.key().decode(), json.loads(m.value())))
+                v = json.loads(m.value())
             except ValueError:
-                out.append((m.topic(), None, {"_undecodable": True}))
+                v = {"_undecodable": True}
+            r = route_in(m.topic(), v, wanted)
+            if r: out.append((r[0], m.key() and m.key().decode(), r[1]))
         return out
 
     def flush(self): self.p.flush(10)
