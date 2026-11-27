@@ -7,7 +7,7 @@ TOPICS = {
     # ingest (input connectors)
     "raw.telemetry": (6, 6 * H), "raw.edge": (3, D), "raw.feeds": (1, D),
     # stream (validate -> enrich -> route)
-    "valid.telemetry": (6, 6 * H), "dlq": (1, D), "quarantine": (1, D),
+    "valid.telemetry": (6, 6 * H), "valid.edge": (3, D), "valid.feeds": (1, D), "dlq": (1, D), "quarantine": (1, D),
     "vss.enriched": (6, 6 * H),
     "cloud.escalations": (3, D), "cloud.security": (3, D), "cloud.fleet": (1, D),
     # services (cloud brain)
