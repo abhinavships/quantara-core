@@ -15,7 +15,6 @@ def canon(d: dict) -> bytes:
 
 def gen_keypair():
     sk = Ed25519PrivateKey.generate()
-    raw = lambda k, f: k.public_bytes(serialization.Encoding.Raw, f) if False else None
     priv = sk.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
                             serialization.NoEncryption())
     pub = sk.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
