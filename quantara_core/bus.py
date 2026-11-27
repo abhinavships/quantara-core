@@ -1,7 +1,7 @@
 """Bus abstraction: KafkaBus (real, retrying) and MemBus (tests / no-broker dev).
 Messages are JSON dicts; key is the vehicle id so a vehicle stays on one partition."""
 import json
-import queue
+import logging
 import threading
 import time
 from collections import defaultdict
@@ -39,13 +39,21 @@ class KafkaBus:
         self._Consumer, self._retries = Consumer, retries
         self.p = Producer({**config.kafka_conf(), "enable.idempotence": True,
                            "retries": 10, "linger.ms": 20})
-        self.consumers = {}
+        self.consumers, self.ok, self.failed = {}, 0, 0
+
+    def _dr(self, err, msg):
+        if err:
+            self.failed += 1
+            if self.failed <= 5 or self.failed % 100 == 0:
+                logging.getLogger('bus').error('delivery failed topic=%s: %s (total failed=%d)', msg.topic(), err, self.failed)
+        else:
+            self.ok += 1
 
     def publish(self, topic, msg, key=None):
         data = json.dumps(msg, separators=(",", ":")).encode()
         for i in range(self._retries):
             try:
-                self.p.produce(topic, data, key=key and key.encode())
+                self.p.produce(topic, data, key=key and key.encode(), on_delivery=self._dr)
                 self.p.poll(0)
                 return
             except BufferError:            # local queue full: drain and retry
