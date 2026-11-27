@@ -36,3 +36,9 @@ def test_schema():
     assert schemas.validate_telemetry(ok) == []
     assert schemas.validate_telemetry({**ok, "signals": {"x": float("nan")}})
     assert schemas.validate_telemetry({"vehicle_id": "V1"})
+
+
+def test_prefix_with_trailing_separator(monkeypatch):
+    monkeypatch.setenv("TOPIC_PREFIX", "quantara_")
+    assert config.topic("raw.telemetry") == "quantara_raw.telemetry"
+    assert config.group("ingest") == "quantara_cg-ingest"

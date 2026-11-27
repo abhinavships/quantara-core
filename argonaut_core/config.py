@@ -9,7 +9,7 @@ def env(name, default=None, required=False):
 
 
 def prefix() -> str:
-    p = env("TOPIC_PREFIX", "argonaut")
+    p = env("TOPIC_PREFIX", "quantara_")
     if "/" in p or not p:
         raise ValueError("TOPIC_PREFIX must be non-empty and contain no '/'")
     return p
@@ -19,7 +19,8 @@ def topic(name: str) -> str:
     """<prefix>.<name>; names may not contain '/'."""
     if "/" in name:
         raise ValueError("no '/' in topic names")
-    return f"{prefix()}.{name}"
+    p = prefix()
+    return p + name if p[-1] in "_.-" else f"{p}.{name}"     # 'quantara_' + 'raw.telemetry'
 
 
 def group(name: str) -> str:
@@ -29,10 +30,10 @@ def group(name: str) -> str:
 def kafka_conf() -> dict:
     """librdkafka config from env. Never logs credentials."""
     c = {"bootstrap.servers": env("KAFKA_BOOTSTRAP", required=True),
-         "security.protocol": env("KAFKA_SECURITY_PROTOCOL", "SASL_SSL"),
+         "security.protocol": env("KAFKA_SECURITY_PROTOCOL", "SASL_PLAINTEXT"),
          "reconnect.backoff.ms": 500, "reconnect.backoff.max.ms": 10000}
     if c["security.protocol"].startswith("SASL"):
-        c.update({"sasl.mechanism": env("KAFKA_SASL_MECHANISM", "SCRAM-SHA-256"),
+        c.update({"sasl.mechanism": env("KAFKA_SASL_MECHANISM", "SCRAM-SHA-512"),
                   "sasl.username": env("KAFKA_SASL_USERNAME", required=True),
                   "sasl.password": env("KAFKA_SASL_PASSWORD", required=True)})
     return c
