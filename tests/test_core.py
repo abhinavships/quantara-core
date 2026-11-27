@@ -1,6 +1,6 @@
 import time
 import pytest
-from argonaut_core import config, crypto, bus, schemas
+from quantara_core import config, crypto, bus, schemas
 
 
 def test_topic_prefix(monkeypatch):
